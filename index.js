@@ -35,7 +35,7 @@ async function run() {
         await client.connect();
 
         const subscribersCollection = client.db('fitSync').collection('subscribers')
-
+        const classesCollection = client.db('fitSync').collection('classes')
         app.post('/subscribe', async(req,res)=>{
             const data = req.body;
             const result = await subscribersCollection.insertOne(data);
@@ -52,6 +52,17 @@ async function run() {
             const result = await subscribersCollection.deleteOne(query)
             res.send(result)
         })
+
+        app.post('/add-class', async(req,res)=>{
+            const data = req.body;
+            const result = await classesCollection.insertOne(data);
+            res.send(result)
+        })
+        app.get('/classes', async(req,res)=>{
+            const result = await classesCollection.find().toArray()
+            res.send(result)
+        })
+
 
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
