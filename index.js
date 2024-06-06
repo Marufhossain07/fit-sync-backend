@@ -36,6 +36,7 @@ async function run() {
 
         const subscribersCollection = client.db('fitSync').collection('subscribers')
         const classesCollection = client.db('fitSync').collection('classes')
+        const usersCollection = client.db('fitSync').collection('users')
         app.post('/subscribe', async(req,res)=>{
             const data = req.body;
             const result = await subscribersCollection.insertOne(data);
@@ -63,7 +64,22 @@ async function run() {
             res.send(result)
         })
 
-
+        app.post('/users', async(req,res)=>{
+            const newUser = req.body;
+            const query = {email: newUser.email}
+            const existingUser = await usersCollection.findOne(query);
+            if(existingUser){
+                const updatedDoc = {
+                    $set : {
+                        lastLogin: newUser.lastLogin
+                    }
+                }
+                const result = await usersCollection.updateOne(query,updatedDoc)
+               return res.send({message:'user already exists', result})
+            }
+            const result = await usersCollection.insertOne(newUser);
+            res.send(result)
+        })
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
