@@ -37,6 +37,7 @@ async function run() {
         const subscribersCollection = client.db('fitSync').collection('subscribers')
         const classesCollection = client.db('fitSync').collection('classes')
         const usersCollection = client.db('fitSync').collection('users')
+        const trainersCollection = client.db('fitSync').collection('trainers')
         app.post('/subscribe', async(req,res)=>{
             const data = req.body;
             const result = await subscribersCollection.insertOne(data);
@@ -78,6 +79,12 @@ async function run() {
                return res.send({message:'user already exists', result})
             }
             const result = await usersCollection.insertOne(newUser);
+            res.send(result)
+        })
+
+        app.post('/trainer', async(req,res)=>{
+            const newTrainer = req.body;
+            const result = await trainersCollection.insertOne(newTrainer);
             res.send(result)
         })
         // Send a ping to confirm a successful connection
