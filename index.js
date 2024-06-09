@@ -38,6 +38,7 @@ async function run() {
         const classesCollection = client.db('fitSync').collection('classes')
         const usersCollection = client.db('fitSync').collection('users')
         const trainersCollection = client.db('fitSync').collection('trainers')
+        const slotCollection = client.db('fitSync').collection('slots')
         app.post('/subscribe', async (req, res) => {
             const data = req.body;
             const result = await subscribersCollection.insertOne(data);
@@ -94,6 +95,13 @@ async function run() {
             res.send(result)
         })
 
+        app.get('/trainer/:email', async(req,res)=>{
+            const email = req.params.email
+            const query = {email: email}
+            const result= await trainersCollection.findOne(query);
+            res.send(result)
+        })
+
 
         app.delete('/trainer', async (req, res) => {
             const id = req.query.id
@@ -139,6 +147,26 @@ async function run() {
             const roleResult = await usersCollection.updateOne(filter,updatedRole)
             const result = await trainersCollection.updateOne(filter,updatedDoc)
             res.send({result,roleResult})
+        })
+
+        app.post('/slot', async(req,res)=>{
+            const slot = req.body;
+            const result = await slotCollection.insertOne(slot)
+            res.send(result)
+        })
+
+        app.get('/slot/:email', async(req,res)=>{
+            const email = req.params.email;
+            const query = {email: email}
+            const result = await slotCollection.find(query).toArray();
+            res.send(result)
+        })
+
+        app.delete('/slot/:id', async(req,res)=>{
+            const id = req.params.id;
+            const query = {_id: new ObjectId(id)}
+            const result = await slotCollection.deleteOne(query)
+            res.send(result)
         })
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
