@@ -66,6 +66,22 @@ async function run() {
             res.send(result)
         })
 
+        app.get('/all-classes', async (req, res) => {
+            const page = parseInt(req.query.page) - 1
+            const size = parseInt(req.query.size)
+            const search = req.query.search;
+            const query = {
+                name: { $regex: search, $options: 'i' }
+            }
+            const result = await classesCollection.find(query).skip(page * size).limit(size).toArray()
+            res.send(result)
+        })
+
+        app.get('/classes-count', async (req, res) => {
+            const result = await classesCollection.countDocuments()
+            res.send({result})
+        })
+
         app.post('/users', async (req, res) => {
             const newUser = req.body;
             const query = { email: newUser.email }
@@ -90,15 +106,21 @@ async function run() {
         })
 
         app.get('/trainer', async (req, res) => {
-            const query = {status: 'accepted'}
+            const query = { status: 'accepted' }
+            const result = await trainersCollection.find(query).toArray()
+            res.send(result)
+        })
+        app.get('/trainer/:name', async (req, res) => {
+            const className = req.params.name;
+            const query = { skills: { $in: [className] } }
             const result = await trainersCollection.find(query).toArray()
             res.send(result)
         })
 
-        app.get('/trainer/:email', async(req,res)=>{
+        app.get('/trainer/details/:email', async (req, res) => {
             const email = req.params.email
-            const query = {email: email}
-            const result= await trainersCollection.findOne(query);
+            const query = { email: email }
+            const result = await trainersCollection.findOne(query);
             res.send(result)
         })
 
@@ -131,9 +153,9 @@ async function run() {
             const result = await trainersCollection.findOne(query);
             res.send(result);
         })
-        app.patch('/applied/:email', async(req,res)=>{
+        app.patch('/applied/:email', async (req, res) => {
             const email = req.params.email;
-            const filter = {email: email}
+            const filter = { email: email }
             const updatedDoc = {
                 $set: {
                     status: 'accepted'
@@ -144,27 +166,27 @@ async function run() {
                     role: 'trainer'
                 }
             }
-            const roleResult = await usersCollection.updateOne(filter,updatedRole)
-            const result = await trainersCollection.updateOne(filter,updatedDoc)
-            res.send({result,roleResult})
+            const roleResult = await usersCollection.updateOne(filter, updatedRole)
+            const result = await trainersCollection.updateOne(filter, updatedDoc)
+            res.send({ result, roleResult })
         })
 
-        app.post('/slot', async(req,res)=>{
+        app.post('/slot', async (req, res) => {
             const slot = req.body;
             const result = await slotCollection.insertOne(slot)
             res.send(result)
         })
 
-        app.get('/slot/:email', async(req,res)=>{
+        app.get('/slot/:email', async (req, res) => {
             const email = req.params.email;
-            const query = {email: email}
+            const query = { email: email }
             const result = await slotCollection.find(query).toArray();
             res.send(result)
         })
 
-        app.delete('/slot/:id', async(req,res)=>{
+        app.delete('/slot/:id', async (req, res) => {
             const id = req.params.id;
-            const query = {_id: new ObjectId(id)}
+            const query = { _id: new ObjectId(id) }
             const result = await slotCollection.deleteOne(query)
             res.send(result)
         })
