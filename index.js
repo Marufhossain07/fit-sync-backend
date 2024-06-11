@@ -39,6 +39,8 @@ async function run() {
         const usersCollection = client.db('fitSync').collection('users')
         const trainersCollection = client.db('fitSync').collection('trainers')
         const slotCollection = client.db('fitSync').collection('slots')
+        const paymentCollection = client.db('fitSync').collection('payments')
+        
         app.post('/subscribe', async (req, res) => {
             const data = req.body;
             const result = await subscribersCollection.insertOne(data);
@@ -79,7 +81,7 @@ async function run() {
 
         app.get('/classes-count', async (req, res) => {
             const result = await classesCollection.countDocuments()
-            res.send({result})
+            res.send({ result })
         })
 
         app.post('/users', async (req, res) => {
@@ -173,15 +175,34 @@ async function run() {
 
         app.post('/slot', async (req, res) => {
             const slot = req.body;
+            const filter = {email: slot.email}
+            const updatedDoc = {
+                $inc: {
+                    availableSlots: 1
+                }
+            }
+            const trainerResult = await trainersCollection.updateOne(filter,updatedDoc)
             const result = await slotCollection.insertOne(slot)
             res.send(result)
         })
-        app.get('/book-slot/:id', async(req,res)=>{
+
+        // booked and payment slot
+        app.get('/book-slot/:id', async (req, res) => {
             const id = req.params.id;
-            const query = {_id: new ObjectId(id)}
+            const query = { _id: new ObjectId(id) }
             const result = await slotCollection.findOne(query)
             res.send(result)
         })
+
+        // booking page slot
+        app.get('/booking/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await slotCollection.findOne(query)
+            res.send(result)
+        })
+
+        // manage slots dashboard
         app.get('/slot/:email', async (req, res) => {
             const email = req.params.email;
             const query = { email: email }
@@ -189,10 +210,55 @@ async function run() {
             res.send(result)
         })
 
-        app.delete('/slot/:id', async (req, res) => {
+        // trainer details page slots
+        app.get('/available-slots/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email , bookedBy: 'none'}
+            const result = await slotCollection.find(query).toArray();
+            res.send(result)
+        })
+
+        app.delete('/slot/:id/:email', async (req, res) => {
             const id = req.params.id;
+            const email = req.params.email;
+            const filter = {email: email}
+            const updatedDoc = {
+                $inc: {
+                    availableSlots: -1
+                }
+            }
+            const trainerResult= await trainersCollection.updateOne(filter,updatedDoc)
             const query = { _id: new ObjectId(id) }
             const result = await slotCollection.deleteOne(query)
+            res.send(result)
+        })
+
+        app.post('/payment', async(req,res)=>{
+            const newPayment = req.body;
+            const filter = {_id: new ObjectId(newPayment.slotId)}
+            const updatedSlot = {
+                $set: {
+                    bookedBy: newPayment.name
+                }
+            }
+            const slotResult = await slotCollection.updateOne(filter,updatedSlot);
+
+            const filterClass = {name: {$in: newPayment.classes}}
+            const updatedClass = {
+                $inc: {
+                    bookedCount: 1
+                }
+            }
+
+            const filterTrainer = {email: newPayment.trainerEmail}
+            const updatedTrainer = {
+                $inc:{
+                    availableSlots: -1
+                }
+            }
+            const trainerResult= await trainersCollection.updateOne(filterTrainer, updatedTrainer)
+            const classesResult = await classesCollection.updateMany(filterClass,updatedClass)
+            const result = await paymentCollection.insertOne(newPayment);
             res.send(result)
         })
         // Send a ping to confirm a successful connection
