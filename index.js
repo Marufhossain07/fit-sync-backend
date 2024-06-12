@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
 const port = process.env.PORT || 5000;
@@ -10,8 +11,8 @@ app.use(
     cors({
         origin: [
             "http://localhost:5173",
-            "https://cardoctor-bd.web.app",
-            "https://cardoctor-bd.firebaseapp.com",
+            "https://fit-sync-f6689.web.app",
+            "https://fit-sync-f6689.firebaseapp.com",
         ]
     })
 );
@@ -40,25 +41,70 @@ async function run() {
         const trainersCollection = client.db('fitSync').collection('trainers')
         const slotCollection = client.db('fitSync').collection('slots')
         const paymentCollection = client.db('fitSync').collection('payments')
-        
+
+        app.post("/jwt", async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1d' });
+
+            res.send({ token })
+        });
+
+        // middlewares 
+        const verifyToken = (req, res, next) => {
+            if (!req.headers.authorization) {
+                return res.status(401).send({ message: 'unauthorized access' })
+            }
+            const token = req.headers.authorization.split(' ')[1]
+            jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+                if (err) {
+                    return res.status(401).send({ message: 'unauthorized access' })
+                }
+                req.decoded = decoded;
+                next()
+            })
+
+        }
+
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email }
+            const user = await usersCollection.findOne(query);
+            const isAdmin = user?.role === 'admin'
+            if (!isAdmin) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+            next()
+        }
+        const verifyTrainer = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email }
+            const user = await usersCollection.findOne(query);
+            const isTrainer = user?.role === 'trainer'
+            if (!isTrainer) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+            next()
+        }
+
+
         app.post('/subscribe', async (req, res) => {
             const data = req.body;
             const result = await subscribersCollection.insertOne(data);
             res.send(result);
         })
 
-        app.get('/subscribe', async (req, res) => {
+        app.get('/subscribe', verifyToken, verifyAdmin, async (req, res) => {
             const result = await subscribersCollection.find().toArray();
             res.send(result)
         })
-        app.delete('/subscribe/:id', async (req, res) => {
+        app.delete('/subscribe/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
             const result = await subscribersCollection.deleteOne(query)
             res.send(result)
         })
 
-        app.post('/add-class', async (req, res) => {
+        app.post('/add-class', verifyToken, verifyAdmin, async (req, res) => {
             const data = req.body;
             const result = await classesCollection.insertOne(data);
             res.send(result)
@@ -101,13 +147,85 @@ async function run() {
             res.send(result)
         })
 
+        app.patch('/user', verifyToken, async (req, res) => {
+            const newData = req.body;
+            const filter = { email: newData.email }
+
+            const updatedDoc = {
+                $set: {
+                    name: newData.name,
+                }
+            }
+            const trainerResult = await trainersCollection.updateOne(filter, updatedDoc)
+            const result = await usersCollection.updateOne(filter, updatedDoc);
+            res.send(result)
+        })
+
+        app.get('/users/admin/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            if (email !== req.decoded.email) {
+                res.status(403).send({ message: 'forbidden access' })
+            }
+            const query = { email: email }
+            const user = await usersCollection.findOne(query)
+            let admin = false;
+            if (user) {
+                admin = user?.role === 'admin'
+            }
+            res.send({ admin })
+        })
+        app.get('/from-users/trainer/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            if (email !== req.decoded.email) {
+                res.status(403).send({ message: 'forbidden access' })
+            }
+            const query = { email: email }
+            const user = await usersCollection.findOne(query)
+            let trainer = false;
+            if (user) {
+                trainer = user?.role === 'trainer'
+            }
+            res.send({ trainer })
+        })
+
         app.post('/trainer', async (req, res) => {
             const newTrainer = req.body;
+            const query = { email: newTrainer.email }
+            const isExist = await trainersCollection.findOne(query);
+            if (isExist) {
+                if (isExist.status === 'pending') {
+                    return res.send({ message: "Please wait for admin approval" })
+                }
+            }
+
             const result = await trainersCollection.insertOne(newTrainer);
             res.send(result)
         })
 
+        app.put('/trainer/feedback', async(req,res)=>{
+            const info = req.body
+            const filter = {_id: new ObjectId(info.id)}
+            const updatedDoc = {
+                $set: {
+                    feedback: info.feedback,
+                    status: 'rejected'
+                }
+            }
+            const options = {
+                $upsert: true
+            }
+            const result = await trainersCollection.updateOne(filter, updatedDoc , options)
+            res.send(result)
+        })
+        app.get('/all-trainer', async (req, res) => {
+
+            const query = { status: 'accepted' }
+            const result = await trainersCollection.find(query).toArray()
+            res.send(result)
+        })
+
         app.get('/trainer', async (req, res) => {
+
             const query = { status: 'accepted' }
             const result = await trainersCollection.find(query).toArray()
             res.send(result)
@@ -148,6 +266,11 @@ async function run() {
             const result = await trainersCollection.find(query).toArray();
             res.send(result)
         })
+        app.get('/activity-log', async (req, res) => {
+            const query = { status: { $in: ['pending', 'rejected'] } }
+            const result = await trainersCollection.find(query).toArray();
+            res.send(result)
+        })
 
         app.get('/applied/:id', async (req, res) => {
             const id = req.params.id;
@@ -175,13 +298,13 @@ async function run() {
 
         app.post('/slot', async (req, res) => {
             const slot = req.body;
-            const filter = {email: slot.email}
+            const filter = { email: slot.email }
             const updatedDoc = {
                 $inc: {
                     availableSlots: 1
                 }
             }
-            const trainerResult = await trainersCollection.updateOne(filter,updatedDoc)
+            const trainerResult = await trainersCollection.updateOne(filter, updatedDoc)
             const result = await slotCollection.insertOne(slot)
             res.send(result)
         })
@@ -213,51 +336,51 @@ async function run() {
         // trainer details page slots
         app.get('/available-slots/:email', async (req, res) => {
             const email = req.params.email;
-            const query = { email: email , bookedBy: 'none'}
+            const query = { email: email, bookedBy: 'none' }
             const result = await slotCollection.find(query).toArray();
             res.send(result)
         })
 
-        app.delete('/slot/:id/:email', async (req, res) => {
+        app.delete('/slot/:id/:email', verifyToken, verifyTrainer, async (req, res) => {
             const id = req.params.id;
             const email = req.params.email;
-            const filter = {email: email}
+            const filter = { email: email }
             const updatedDoc = {
                 $inc: {
                     availableSlots: -1
                 }
             }
-            const trainerResult= await trainersCollection.updateOne(filter,updatedDoc)
+            const trainerResult = await trainersCollection.updateOne(filter, updatedDoc)
             const query = { _id: new ObjectId(id) }
             const result = await slotCollection.deleteOne(query)
             res.send(result)
         })
 
-        app.post('/payment', async(req,res)=>{
+        app.post('/payment', async (req, res) => {
             const newPayment = req.body;
-            const filter = {_id: new ObjectId(newPayment.slotId)}
+            const filter = { _id: new ObjectId(newPayment.slotId) }
             const updatedSlot = {
                 $set: {
-                    bookedBy: newPayment.name
+                    bookedBy: newPayment.email
                 }
             }
-            const slotResult = await slotCollection.updateOne(filter,updatedSlot);
+            const slotResult = await slotCollection.updateOne(filter, updatedSlot);
 
-            const filterClass = {name: {$in: newPayment.classes}}
+            const filterClass = { name: { $in: newPayment.classes } }
             const updatedClass = {
                 $inc: {
                     bookedCount: 1
                 }
             }
 
-            const filterTrainer = {email: newPayment.trainerEmail}
+            const filterTrainer = { email: newPayment.trainerEmail }
             const updatedTrainer = {
-                $inc:{
+                $inc: {
                     availableSlots: -1
                 }
             }
-            const trainerResult= await trainersCollection.updateOne(filterTrainer, updatedTrainer)
-            const classesResult = await classesCollection.updateMany(filterClass,updatedClass)
+            const trainerResult = await trainersCollection.updateOne(filterTrainer, updatedTrainer)
+            const classesResult = await classesCollection.updateMany(filterClass, updatedClass)
             const result = await paymentCollection.insertOne(newPayment);
             res.send(result)
         })
