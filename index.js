@@ -41,6 +41,7 @@ async function run() {
         const trainersCollection = client.db('fitSync').collection('trainers')
         const slotCollection = client.db('fitSync').collection('slots')
         const paymentCollection = client.db('fitSync').collection('payments')
+        const forumCollection = client.db('fitSync').collection('forums')
 
         app.post("/jwt", async (req, res) => {
             const user = req.body;
@@ -124,6 +125,12 @@ async function run() {
             const result = await classesCollection.find(query).skip(page * size).limit(size).toArray()
             res.send(result)
         })
+        app.get('/all-forums', async (req, res) => {
+            const page = parseInt(req.query.page) - 1
+            const size = parseInt(req.query.size)
+            const result = await forumCollection.find().skip(page * size).limit(size).toArray()
+            res.send(result)
+        })
 
         app.get('/classes-count', async (req, res) => {
             const result = await classesCollection.countDocuments()
@@ -187,6 +194,12 @@ async function run() {
             }
             res.send({ trainer })
         })
+        app.get('/user/role/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email };
+            const result = await usersCollection.findOne(query);
+            res.send(result)
+        })
 
         app.post('/trainer', async (req, res) => {
             const newTrainer = req.body;
@@ -196,25 +209,25 @@ async function run() {
                 if (isExist.status === 'pending') {
                     return res.send({ message: "Please wait for admin approval" })
                 }
+                if (isExist.status === 'accepted') {
+                    return res.send({ message: "You are already a Trainer" })
+                }
             }
 
             const result = await trainersCollection.insertOne(newTrainer);
             res.send(result)
         })
 
-        app.put('/trainer/feedback', async(req,res)=>{
+        app.put('/trainer/feedback', async (req, res) => {
             const info = req.body
-            const filter = {_id: new ObjectId(info.id)}
+            const filter = { _id: new ObjectId(info.id) }
             const updatedDoc = {
                 $set: {
                     feedback: info.feedback,
                     status: 'rejected'
                 }
             }
-            const options = {
-                $upsert: true
-            }
-            const result = await trainersCollection.updateOne(filter, updatedDoc , options)
+            const result = await trainersCollection.updateOne(filter, updatedDoc)
             res.send(result)
         })
         app.get('/all-trainer', async (req, res) => {
@@ -234,6 +247,13 @@ async function run() {
             const className = req.params.name;
             const query = { skills: { $in: [className] } }
             const result = await trainersCollection.find(query).toArray()
+            res.send(result)
+        })
+
+        app.get('/trainer/feedback/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await trainersCollection.findOne(query);
             res.send(result)
         })
 
@@ -383,6 +403,47 @@ async function run() {
             const classesResult = await classesCollection.updateMany(filterClass, updatedClass)
             const result = await paymentCollection.insertOne(newPayment);
             res.send(result)
+        })
+
+        app.post('/forum', async(req,res)=>{
+            const data = req.body;
+            const result = await forumCollection.insertOne(data);
+            res.send(result)
+        })
+
+        app.get('/forum', async(req,res)=>{
+            const result = await forumCollection.find().toArray();
+            res.send(result)
+        })
+
+        app.patch('/forum/upvote/:id', async(req,res)=>{
+            const id = req.params.id;
+            const filter = {_id: new ObjectId(id)}
+            const updatedDoc = {
+                $inc:{
+                    upvote : 1
+                }
+            }
+
+            const result = await forumCollection.updateOne(filter, updatedDoc)
+            res.send(result)
+        })
+        app.patch('/forum/downvote/:id', async(req,res)=>{
+            const id = req.params.id;
+            const filter = {_id: new ObjectId(id)}
+            const updatedDoc = {
+                $inc:{
+                    upvote : -1
+                }
+            }
+
+            const result = await forumCollection.updateOne(filter, updatedDoc)
+            res.send(result)
+        })
+
+        app.get('/forums-count', async(req,res)=>{
+            const result = await forumCollection.countDocuments()
+            res.send({result})
         })
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
