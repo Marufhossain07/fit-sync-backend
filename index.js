@@ -42,7 +42,7 @@ async function run() {
         const slotCollection = client.db('fitSync').collection('slots')
         const paymentCollection = client.db('fitSync').collection('payments')
         const forumCollection = client.db('fitSync').collection('forums')
-
+        const reviewCollection = client.db('fitSync').collection('reviews')
         app.post("/jwt", async (req, res) => {
             const user = req.body;
             const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1d' });
@@ -114,6 +114,13 @@ async function run() {
             const result = await classesCollection.find().toArray()
             res.send(result)
         })
+        app.get('/trainers/classes/:skills', async(req,res)=>{
+            const skills = req.params.skills;
+            const skill = skills.split(',')
+            const query = {name: {$in: skill}}
+            const result = await classesCollection.find(query).toArray();
+            res.send(result);
+        })
 
         app.get('/all-classes', async (req, res) => {
             const page = parseInt(req.query.page) - 1
@@ -135,6 +142,15 @@ async function run() {
         app.get('/classes-count', async (req, res) => {
             const result = await classesCollection.countDocuments()
             res.send({ result })
+        })
+        app.get('/top-classes', async(req,res)=>{
+            const option = {
+                $sort: {
+                    bookedCount: -1
+                }
+            }
+            const result = await classesCollection.aggregate([option]).toArray();
+            res.send(result)
         })
 
         app.post('/users', async (req, res) => {
@@ -261,6 +277,13 @@ async function run() {
             const email = req.params.email
             const query = { email: email }
             const result = await trainersCollection.findOne(query);
+            res.send(result)
+        })
+
+        app.get('/trainer/booked/:email', async(req,res)=>{
+            const email = req.params.email;
+            const query = {bookedBy: email};
+            const result = await slotCollection.find(query).toArray();
             res.send(result)
         })
 
@@ -444,6 +467,17 @@ async function run() {
         app.get('/forums-count', async(req,res)=>{
             const result = await forumCollection.countDocuments()
             res.send({result})
+        })
+
+        app.post('/review', async(req,res)=>{
+            const review = req.body;
+            const result = await reviewCollection.insertOne(review);
+            res.send(result)
+        })
+
+        app.get('/review', async(req,res)=>{
+            const result = await reviewCollection.find().toArray();
+            res.send(result)
         })
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
