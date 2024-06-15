@@ -223,7 +223,7 @@ async function run() {
             const isExist = await trainersCollection.findOne(query);
             if (isExist) {
                 if (isExist.status === 'pending') {
-                    return res.send({ message: "Please wait for admin approval" })
+                    return res.send({ message: "You have already applied" })
                 }
                 if (isExist.status === 'accepted') {
                     return res.send({ message: "You are already a Trainer" })
@@ -234,7 +234,7 @@ async function run() {
             res.send(result)
         })
 
-        app.put('/trainer/feedback', async (req, res) => {
+        app.put('/trainer/feedback', verifyToken, verifyAdmin, async (req, res) => {
             const info = req.body
             const filter = { _id: new ObjectId(info.id) }
             const updatedDoc = {
@@ -280,7 +280,7 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/trainer/booked/:email', async(req,res)=>{
+        app.get('/trainer/booked/:email',  async(req,res)=>{
             const email = req.params.email;
             const query = {bookedBy: email};
             const result = await slotCollection.find(query).toArray();
@@ -288,7 +288,7 @@ async function run() {
         })
 
 
-        app.delete('/trainer', async (req, res) => {
+        app.delete('/trainer', verifyToken, verifyAdmin,  async (req, res) => {
             const id = req.query.id
             const email = req.query.email
             const query = { _id: new ObjectId(id) }
@@ -304,7 +304,7 @@ async function run() {
         })
 
 
-        app.get('/applied', async (req, res) => {
+        app.get('/applied', verifyToken, verifyAdmin, async (req, res) => {
             const query = { status: 'pending' }
             const result = await trainersCollection.find(query).toArray();
             res.send(result)
@@ -339,7 +339,7 @@ async function run() {
             res.send({ result, roleResult })
         })
 
-        app.post('/slot', async (req, res) => {
+        app.post('/slot', verifyToken, verifyTrainer, async (req, res) => {
             const slot = req.body;
             const filter = { email: slot.email }
             const updatedDoc = {
@@ -369,7 +369,7 @@ async function run() {
         })
 
         // manage slots dashboard
-        app.get('/slot/:email', async (req, res) => {
+        app.get('/slot/:email', verifyToken, verifyTrainer,  async (req, res) => {
             const email = req.params.email;
             const query = { email: email }
             const result = await slotCollection.find(query).toArray();
@@ -399,7 +399,7 @@ async function run() {
             res.send(result)
         })
 
-        app.post('/payment', async (req, res) => {
+        app.post('/payment', verifyToken, async (req, res) => {
             const newPayment = req.body;
             const filter = { _id: new ObjectId(newPayment.slotId) }
             const updatedSlot = {
@@ -428,7 +428,7 @@ async function run() {
             res.send(result)
         })
 
-        app.post('/forum', async(req,res)=>{
+        app.post('/forum', verifyToken, async(req,res)=>{
             const data = req.body;
             const result = await forumCollection.insertOne(data);
             res.send(result)
@@ -478,6 +478,38 @@ async function run() {
         app.get('/review', async(req,res)=>{
             const result = await reviewCollection.find().toArray();
             res.send(result)
+        })
+
+        app.get('/balance/stats', verifyToken, verifyAdmin, async(req,res)=>{
+            const filter = {status: 'accepted'}
+            const trainers = await trainersCollection.countDocuments(filter)
+            const memberFilter = {role: 'member'}
+            const members = await usersCollection.countDocuments(memberFilter)
+            const classes = await classesCollection.estimatedDocumentCount();
+            const paid = await paymentCollection.estimatedDocumentCount()
+            const subscribers = await subscribersCollection.estimatedDocumentCount()
+            const transaction = await paymentCollection.find().sort({time: -1}).toArray()
+            const result = await paymentCollection.aggregate([
+                {
+                    $group:{
+                        _id: null,
+                        total: {
+                            $sum: '$price'
+                        }
+                    }
+                }
+            ]).toArray()
+
+            const balance = result.length > 0 ? result[0].total : 0;
+            res.send({
+                trainers,
+                members,
+                classes,
+                balance,
+                transaction,
+                paid,
+                subscribers
+            }) 
         })
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
